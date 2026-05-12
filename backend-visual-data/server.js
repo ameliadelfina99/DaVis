@@ -27,7 +27,7 @@ const upload = multer({ dest: 'uploads/' });
 const db = mysql.createPool({
     host: 'mysql-26e23bfa-ameliadelfina99-e4da.h.aivencloud.com',
     user: 'avnadmin',
-    password: 'ISI_DENGAN_PASSWORD_AIVEN', // 👈 PENTING: Ganti tulisan ini dengan password Aiven kamu
+    password: 'AVNS_24IaBTFQTZLhc_B_RXm', // 👈 PENTING: Ganti tulisan ini dengan password Aiven kamu
     database: 'defaultdb',
     port: 12893,
     waitForConnections: true,
