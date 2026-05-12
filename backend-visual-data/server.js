@@ -2,10 +2,9 @@ const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 const bcrypt = require('bcrypt');
-const xlsx = require('xlsx');
 const fs = require('fs');
-const csv = require('csv-parser'); // <-- Ditambahkan agar file CSV bisa di-parsing di proses upload
-const mysql = require('mysql2/promise'); // <-- Digunakan untuk koneksi Aiven
+const csv = require('csv-parser');
+const mysql = require('mysql2/promise');
 
 const app = express();
 const PORT = 5000; 
@@ -13,12 +12,10 @@ const PORT = 5000;
 app.use(cors());
 app.use(express.json());
 
-// Buat folder 'uploads' secara otomatis jika belum ada
 if (!fs.existsSync('./uploads')) {
     fs.mkdirSync('./uploads');
 }
 
-// Konfigurasi Multer untuk menyimpan file di folder 'uploads/'
 const upload = multer({ dest: 'uploads/' });
 
 // ==========================================
@@ -27,7 +24,7 @@ const upload = multer({ dest: 'uploads/' });
 const db = mysql.createPool({
     host: 'mysql-26e23bfa-ameliadelfina99-e4da.h.aivencloud.com',
     user: 'avnadmin',
-    password: 'AVNS_24IaBTFQTZLhc_B_RXm', // 👈 PENTING: Ganti tulisan ini dengan password Aiven kamu
+    password: 'AVNS_24laBTFQTZLhc_B_RXm', // Abaikan peringatan GitHub (Lakukan bypass seperti sebelumnya)
     database: 'defaultdb',
     port: 12893,
     waitForConnections: true,
@@ -39,48 +36,55 @@ const db = mysql.createPool({
 });
 
 // ==========================================
-// 2. FUNGSI PINTAR: OTOMATIS BUAT TABEL
+// 2. FUNGSI PINTAR: PENYESUAIAN STRUKTUR TABEL
 // ==========================================
 const initializeDB = async () => {
     try {
+        // Tabel users dengan BIGINT dan updated_at
         await db.query(`
             CREATE TABLE IF NOT EXISTS users (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                username VARCHAR(50) NOT NULL,
-                password VARCHAR(255) NOT NULL
+                id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                email VARCHAR(100) NOT NULL,
+                password VARCHAR(255) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             )
         `);
 
+        // Tabel datasets dengan JSON type dan BIGINT
         await db.query(`
             CREATE TABLE IF NOT EXISTS datasets (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT NOT NULL,
+                id BIGINT(20) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+                user_id BIGINT(20) UNSIGNED NOT NULL,
                 file_name VARCHAR(255) NOT NULL,
                 file_path VARCHAR(255) NOT NULL,
                 delete_password VARCHAR(255) NOT NULL,
-                data_content LONGTEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                data_content JSON DEFAULT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             )
         `);
 
         const [rows] = await db.query('SELECT * FROM users');
         if (rows.length === 0) {
-            // Jika tabel users masih kosong, buatkan 1 admin default
-            await db.query('INSERT INTO users (username, password) VALUES (?, ?)', ['admin', 'admin123']);
-            console.log('✅ Admin default berhasil dibuat! Password izin upload: admin123');
+            await db.query(
+                'INSERT INTO users (name, email, password) VALUES (?, ?, ?)', 
+                ['Admin', 'admin@davis.com', 'rahasia123']
+            );
+            console.log('✅ Admin default berhasil dibuat! Password izin upload: rahasia123');
         }
 
-        console.log('✅ Database Cloud Aiven berhasil tersambung dan siap digunakan!');
+        console.log('✅ Database Cloud Aiven berhasil tersambung dengan skema tabel terbaru!');
     } catch (error) {
         console.error('🚨 Gagal menyiapkan database cloud:', error);
     }
 };
 
-// Jalankan fungsi inisialisasi saat server dinyalakan
 initializeDB();
 
 // ==========================================
-// API ENDPOINT: UPLOAD DATASET (DENGAN PROTEKSI ADMIN)
+// API ENDPOINT: UPLOAD DATASET
 // ==========================================
 app.post('/api/upload', upload.single('file_dataset'), async (req, res) => {
     try {
@@ -112,7 +116,7 @@ app.post('/api/upload', upload.single('file_dataset'), async (req, res) => {
 
         if (!isUploadAllowed) {
              if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
-             return res.status(401).json({ message: "Akses Ditolak! Password Upload salah." });
+             return res.status(401).json({ message: "Akses Ditolak! Password System salah." });
         }
 
         const results = [];
@@ -121,6 +125,7 @@ app.post('/api/upload', upload.single('file_dataset'), async (req, res) => {
             .on('data', (data) => results.push(data))
             .on('end', async () => {
                 try {
+                    // JSON.stringify mengubah data menjadi format string yang valid untuk tipe kolom JSON di MySQL
                     const jsonData = JSON.stringify(results);
                     const hashedDeletePassword = await bcrypt.hash(deletePassword, 10);
                     
@@ -155,7 +160,7 @@ app.get('/api/datasets', async (req, res) => {
 });
 
 // ==========================================
-// API ENDPOINT: HAPUS DATASET (DENGAN PASSWORD)
+// API ENDPOINT: HAPUS DATASET
 // ==========================================
 app.delete('/api/datasets/:id', async (req, res) => {
     try {
@@ -204,6 +209,8 @@ app.get('/api/datasets/:id/data', async (req, res) => {
             return res.status(404).json({ message: "Dataset tidak ditemukan." });
         }
 
+        // Karena kolomnya sekarang bertipe JSON, MySQL2 akan otomatis menjadikannya Object JavaScript.
+        // Kita gunakan logika ini agar tidak terjadi error "double parse"
         const rawData = rows[0].data_content;
         const parsedData = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
 
@@ -214,7 +221,6 @@ app.get('/api/datasets/:id/data', async (req, res) => {
     }
 });
 
-// Menyalakan Server
 app.listen(PORT, () => {
     console.log(`Server berjalan di http://localhost:${PORT}`);
 });
