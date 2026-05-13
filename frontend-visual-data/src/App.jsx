@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import ReactECharts from 'echarts-for-react';
 import * as echarts from 'echarts';
+import superstoreData from './superstore_data.json';
 
 function App() {
   const [activeTab, setActiveTab] = useState('data-management');
@@ -54,12 +55,11 @@ function App() {
     setActiveDatasetName(selected.file_name);
     
     try {
-      // Fetch akan langsung mengambil file dari folder public/superstore_data.json
-      const response = await fetch(`/${selected.file_name}`);
-      const data = await response.json();
-      setDashboardData(data);
+      // SUNTIK LANGSUNG: Tidak butuh 'fetch' atau internet lagi!
+      // Data langsung diambil dari file yang di-import di atas.
+      setDashboardData(superstoreData);
     } catch (error) { 
-      alert("🚨 Gagal memuat data lokal! Pastikan file JSON ada di folder 'public'."); 
+      alert("🚨 Gagal memuat data lokal!"); 
     } finally { 
       setIsDashboardLoading(false); 
     }
