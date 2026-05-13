@@ -4,45 +4,29 @@ import * as echarts from 'echarts';
 
 function App() {
   const [activeTab, setActiveTab] = useState('data-management');
-  const [showUploadForm, setShowUploadForm] = useState(false); 
   
-  // 👉 STATE BARU: Untuk mengatur Buka/Tutup Sidebar
+  // 👉 STATE DASHBOARD
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-
-  const [file, setFile] = useState(null);
-  const [password, setPassword] = useState(''); 
-  const [systemPassword, setSystemPassword] = useState(''); 
-  const [message, setMessage] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [datasets, setDatasets] = useState([]);
-
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedDatasetId, setSelectedDatasetId] = useState(null);
-  const [deletePassword, setDeletePassword] = useState('');
-  const [deleteMessage, setDeleteMessage] = useState('');
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-
   const [dashboardData, setDashboardData] = useState([]);
   const [isDashboardLoading, setIsDashboardLoading] = useState(false);
   const [activeDatasetName, setActiveDatasetName] = useState('');
   const [activeVizDatasetId, setActiveVizDatasetId] = useState(''); 
   const [isMapLoaded, setIsMapLoaded] = useState(false);
-
   const [currentPage, setCurrentPage] = useState(1);
 
-  const fetchDatasets = async () => {
-    try {
-      const response = await fetch('http://localhost:5000/api/datasets');
-      setDatasets(await response.json());
-    } catch (error) {
-      console.error("Gagal mengambil dataset:", error);
-    }
-  };
-
   useEffect(() => {
-    fetchDatasets();
+    // 1. HARDCODE DATASET STATIS
+    // Karena kita tidak pakai database, kita daftarkan file JSON yang ada di folder 'public' ke sini.
+    setDatasets([
+      { 
+        id: 1, 
+        file_name: 'superstore_data.json', 
+        created_at: new Date().toISOString() 
+      }
+    ]);
+
+    // 2. LOAD PETA AMERIKA
     fetch('https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json')
       .then(response => response.json())
       .then(usaJson => {
@@ -52,87 +36,33 @@ function App() {
       .catch(err => console.error("Gagal memuat file peta:", err));
   }, []);
 
-  const handleUploadClick = (e) => {
-    e.preventDefault();
-    if (!file || !password) {
-      setMessage('⚠️ Lengkapi file dan password proteksi hapus data terlebih dahulu!'); 
+  // 👉 FUNGSI PINTAR: BACA FILE JSON DARI FOLDER PUBLIC LOKAL
+  const handleSelectDataset = async (datasetId) => {
+    setActiveVizDatasetId(datasetId);
+    setCurrentPage(1); 
+    
+    if (!datasetId) {
+      setDashboardData([]);
+      setActiveDatasetName('');
       return;
     }
-    setMessage('');
-    setSystemPassword('');
-    setIsAuthModalOpen(true); 
-  };
-
-  const executeUpload = async () => {
-    if (!systemPassword) {
-      alert('System password cannot be empty!'); return;
-    }
-    setIsAuthModalOpen(false); 
-    setIsLoading(true); setMessage('');
-    
-    const formData = new FormData();
-    formData.append('file_dataset', file);
-    formData.append('password', password); 
-    formData.append('upload_password', systemPassword); 
-
-    try {
-      const response = await fetch('http://localhost:5000/api/upload', { method: 'POST', body: formData });
-      const data = await response.json();
-      if (response.ok) {
-        setMessage(`✅ Sukses: ${data.message}`);
-        setFile(null); setPassword(''); 
-        document.getElementById('fileInput').value = ''; 
-        fetchDatasets();
-        setTimeout(() => setShowUploadForm(false), 2000); 
-      } else {
-        setMessage(`❌ Gagal: ${data.message}`);
-      }
-    } catch (error) {
-      setMessage('🚨 Error: Gagal menghubungi server.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const openDeleteModal = (id) => {
-    setSelectedDatasetId(id);
-    setDeletePassword(''); setDeleteMessage(''); setIsModalOpen(true);
-  };
-
-  const confirmDelete = async () => {
-    if (!deletePassword) { setDeleteMessage('⚠️ Password tidak boleh kosong!'); return; }
-    setIsDeleting(true); setDeleteMessage('');
-    try {
-      const response = await fetch(`http://localhost:5000/api/datasets/${selectedDatasetId}`, {
-        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: deletePassword })
-      });
-      const data = await response.json();
-      if (response.ok) {
-        setIsModalOpen(false); fetchDatasets(); alert('✅ ' + data.message);
-        if (activeVizDatasetId == selectedDatasetId) {
-            setDashboardData([]); setActiveDatasetName(''); setActiveVizDatasetId('');
-        }
-      } else {
-        setDeleteMessage(`❌ Gagal: ${data.message}`);
-      }
-    } catch (error) { setDeleteMessage('🚨 Error: Gagal menghubungi server.'); } 
-    finally { setIsDeleting(false); }
-  };
-
-  const handleSelectDataset = async (datasetId) => {
-    setActiveVizDatasetId(datasetId); setCurrentPage(1); 
-    if (!datasetId) { setDashboardData([]); setActiveDatasetName(''); return; }
 
     const selected = datasets.find(d => d.id == datasetId);
     if (!selected) return;
 
-    setIsDashboardLoading(true); setActiveDatasetName(selected.file_name);
+    setIsDashboardLoading(true); 
+    setActiveDatasetName(selected.file_name);
+    
     try {
-      const response = await fetch(`http://localhost:5000/api/datasets/${datasetId}/data`);
-      setDashboardData(await response.json());
-    } catch (error) { alert("🚨 Gagal mengambil data!"); } 
-    finally { setIsDashboardLoading(false); }
+      // Fetch akan langsung mengambil file dari folder public/superstore_data.json
+      const response = await fetch(`/${selected.file_name}`);
+      const data = await response.json();
+      setDashboardData(data);
+    } catch (error) { 
+      alert("🚨 Gagal memuat data lokal! Pastikan file JSON ada di folder 'public'."); 
+    } finally { 
+      setIsDashboardLoading(false); 
+    }
   };
 
   const viewRawData = async (id, fileName) => {
@@ -323,7 +253,6 @@ function App() {
     stream: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
   };
 
-  // 👉 PERUBAHAN: Menyesuaikan styling tombol navigasi berdasarkan state Buka/Tutup Sidebar
   const NavItem = ({ id, icon, label }) => {
     const isActive = activeTab === id;
     return (
@@ -332,7 +261,7 @@ function App() {
         className={`py-3 rounded-xl cursor-pointer transition-all duration-200 flex items-center font-medium tracking-wide ${
           isSidebarOpen ? 'px-4 gap-4' : 'px-0 justify-center'
         } ${isActive ? 'bg-[#dee5ef] text-[#11213a] shadow-sm' : 'text-slate-300 hover:bg-white/10 hover:text-white'}`}
-        title={!isSidebarOpen ? label : ''} // Memunculkan tooltip saat sidebar ditutup
+        title={!isSidebarOpen ? label : ''} 
       >
         <div className="shrink-0">{icon}</div>
         {isSidebarOpen && <span className="truncate">{label}</span>}
@@ -344,17 +273,15 @@ function App() {
     <div className="flex flex-col items-center justify-center h-[calc(100vh-200px)] text-center bg-white p-10 rounded-2xl border border-slate-200 border-dashed">
       <div className="text-6xl mb-4">📊</div>
       <h2 className="text-2xl font-bold text-slate-800 mb-2">Pilih Dataset Terlebih Dahulu</h2>
-      <p className="text-slate-500 max-w-md">Silakan gunakan menu <b>dropdown di sudut kanan atas</b> layar untuk memilih dataset yang ingin dianalisis.</p>
+      <p className="text-slate-500 max-w-md">Silakan gunakan menu <b>dropdown di sudut kanan atas</b> layar untuk memilih dataset statis yang ingin dianalisis.</p>
     </div>
   );
 
   return (
     <div className="flex h-screen bg-slate-50 font-sans relative overflow-hidden">
       
-      {/* 👉 PERUBAHAN: SIDEBAR DINAMIS (W-64 ATAU W-20) 👈 */}
+      {/* SIDEBAR */}
       <div className={`bg-[#11213a] text-white flex flex-col shadow-2xl z-20 shrink-0 transition-all duration-300 ease-in-out ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
-        
-        {/* Sidebar Header & Toggle Button */}
         <div className={`p-5 h-20 border-b border-white/10 flex items-center tracking-wide ${isSidebarOpen ? 'justify-between' : 'justify-center'}`}>
           <div className={`flex items-center gap-3 ${!isSidebarOpen && 'hidden'}`}>
             <span className="text-blue-400 text-2xl">📊</span>
@@ -370,7 +297,7 @@ function App() {
         </div>
 
         <ul className="flex-1 px-3 py-6 space-y-2 overflow-y-auto custom-scrollbar">
-          <NavItem id="data-management" icon={Icons.data} label="Data Management" />
+          <NavItem id="data-management" icon={Icons.data} label="Data Library" />
           
           <div className={`pt-6 pb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider ${isSidebarOpen ? 'px-4' : 'text-center'}`}>
             {isSidebarOpen ? 'Visualizations' : 'Viz'}
@@ -416,50 +343,26 @@ function App() {
         {isDashboardLoading && activeTab !== 'data-management' && (
           <div className="absolute inset-0 bg-white/60 backdrop-blur-sm z-40 flex flex-col items-center justify-center rounded-xl">
             <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-[#11213a] mb-4"></div>
-            <h2 className="text-lg font-bold text-slate-700">Menyusun Data...</h2>
+            <h2 className="text-lg font-bold text-slate-700">Membaca Data Lokal...</h2>
           </div>
         )}
 
-        {/* TAB DATA MANAGEMENT */}
+        {/* TAB DATA MANAGEMENT (MODE STATIS: TANPA UPLOAD/DELETE) */}
         {activeTab === 'data-management' && (
           <div className="animate-fade-in">
             <div className="flex justify-between items-end mb-8">
               <div>
-                <h1 className="text-3xl font-extrabold text-slate-800">Data Management</h1>
-                <p className="text-slate-500 mt-2">Gudang data Anda. Upload dan kelola daftar dataset di sini.</p>
+                <h1 className="text-3xl font-extrabold text-slate-800">Static Data Library</h1>
+                <p className="text-slate-500 mt-2">Mode Serverless aktif. Data diambil langsung dari folder public aplikasi.</p>
               </div>
-              <button onClick={() => setShowUploadForm(!showUploadForm)} className="px-5 py-2.5 bg-[#11213a] hover:bg-[#1a3258] text-white rounded-lg font-bold shadow-md transition-colors flex items-center gap-2">
-                {showUploadForm ? 'Tutup Form' : '☁️ Upload Dataset Baru'}
-              </button>
             </div>
-
-            {showUploadForm && (
-              <div className="mb-8 bg-blue-50 border border-blue-200 p-6 rounded-xl shadow-sm animate-fade-in">
-                <form onSubmit={handleUploadClick} className="flex flex-col gap-4">
-                  <div>
-                    <label className="block text-sm font-bold text-slate-700 mb-2">Pilih File (XLSX/CSV)</label>
-                    <input type="file" id="fileInput" accept=".xlsx, .csv" onChange={(e) => setFile(e.target.files[0])} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700 bg-white border rounded-lg cursor-pointer"/>
-                  </div>
-                  <div className="flex flex-col md:flex-row gap-4">
-                    <div className="flex-1 w-full">
-                      <label className="block text-sm font-bold text-slate-700 mb-2">Password Proteksi Hapus Data</label>
-                      <input type="password" placeholder="Buat password unik untuk file ini..." value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-4 py-2.5 rounded-lg border focus:ring-2 focus:ring-blue-500 outline-none"/>
-                    </div>
-                  </div>
-                  <button type="submit" disabled={isLoading} className={`mt-2 w-full py-3 rounded-lg font-bold text-white shadow-md ${isLoading ? 'bg-slate-400' : 'bg-blue-600 hover:bg-blue-700'}`}>
-                    {isLoading ? '⏳ Menyiapkan...' : 'Upload Data'}
-                  </button>
-                </form>
-                {message && <div className={`mt-4 p-3 rounded-lg font-medium border ${message.includes('✅') ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-rose-50 text-rose-800 border-rose-200'}`}>{message}</div>}
-              </div>
-            )}
 
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50 text-slate-600 text-sm uppercase tracking-wider">
-                    <th className="px-6 py-4 font-semibold border-b border-slate-200">Nama File Dataset</th>
-                    <th className="px-6 py-4 font-semibold border-b border-slate-200">Tanggal Upload</th>
+                    <th className="px-6 py-4 font-semibold border-b border-slate-200">Nama File Statis</th>
+                    <th className="px-6 py-4 font-semibold border-b border-slate-200">Status</th>
                     <th className="px-6 py-4 font-semibold border-b border-slate-200 text-center">Aksi Manajemen</th>
                   </tr>
                 </thead>
@@ -467,16 +370,14 @@ function App() {
                   {datasets.map((item) => (
                     <tr key={item.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4 font-medium text-slate-800 flex items-center gap-3"><span className="text-xl">📄</span> {item.file_name}</td>
-                      <td className="px-6 py-4 text-slate-500">{new Date(item.created_at).toLocaleDateString('id-ID')}</td>
+                      <td className="px-6 py-4">
+                        <span className="px-3 py-1 bg-emerald-100 text-emerald-700 font-bold text-xs rounded-full">Ready to Use</span>
+                      </td>
                       <td className="px-6 py-4 flex justify-center gap-2">
                         <button onClick={() => viewRawData(item.id, item.file_name)} className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium shadow-sm flex items-center gap-2">👁️ Lihat Data</button>
-                        <button onClick={() => openDeleteModal(item.id)} className="px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-lg font-medium shadow-sm flex items-center gap-2">🗑️ Hapus</button>
                       </td>
                     </tr>
                   ))}
-                  {datasets.length === 0 && (
-                    <tr><td colSpan="3" className="text-center py-12 text-slate-400">Belum ada dataset yang di-upload.</td></tr>
-                  )}
                 </tbody>
               </table>
             </div>
@@ -576,48 +477,6 @@ function App() {
           )
         )}
       </div>
-
-      {/* UPLOAD MODAL */}
-      {isAuthModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 transition-all">
-          <div className="bg-[#11213a] p-6 rounded-xl shadow-2xl max-w-sm w-full border border-slate-700 text-slate-200">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold text-white tracking-wide">Security Authorization</h3>
-              <button onClick={() => setIsAuthModalOpen(false)} className="text-slate-400 hover:text-white transition-colors">✕</button>
-            </div>
-            <hr className="border-slate-700 mb-5" />
-            <p className="mb-4 text-sm font-medium text-slate-300">Enter system password to authorize import.</p>
-            <input
-              type="password"
-              value={systemPassword}
-              onChange={(e) => setSystemPassword(e.target.value)}
-              className="w-full px-4 py-3 mb-6 rounded-lg bg-[#1a2f4c] border border-slate-600 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none text-white transition-all shadow-inner"
-              autoFocus
-              onKeyDown={(e) => e.key === 'Enter' && executeUpload()}
-            />
-            <div className="flex justify-end gap-3">
-              <button onClick={() => setIsAuthModalOpen(false)} className="px-5 py-2.5 rounded-lg font-bold text-slate-300 hover:text-white hover:bg-slate-800 transition-colors">Cancel</button>
-              <button onClick={executeUpload} className="px-6 py-2.5 rounded-lg font-bold text-[#11213a] bg-slate-200 hover:bg-white shadow-md transition-colors">Verify</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* DELETE MODAL */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex justify-center items-center z-50 transition-all">
-          <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-md w-full border border-slate-100">
-            <h3 className="text-2xl font-bold text-slate-800 mb-2">⚠️ Konfirmasi Hapus</h3>
-            <p className="text-slate-500 mb-6 text-sm">Tindakan ini tidak bisa dibatalkan. Masukkan password dataset ini.</p>
-            <input type="password" placeholder="Password..." value={deletePassword} onChange={(e) => setDeletePassword(e.target.value)} className="w-full px-4 py-3 mb-4 rounded-lg border focus:ring-2 focus:ring-rose-500 outline-none"/>
-            {deleteMessage && <p className="text-rose-600 text-sm font-medium mb-4">{deleteMessage}</p>}
-            <div className="flex justify-end gap-3 mt-2">
-              <button onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 rounded-lg font-bold text-slate-600 bg-slate-100 hover:bg-slate-200">Batal</button>
-              <button onClick={confirmDelete} disabled={isDeleting} className={`px-5 py-2.5 rounded-lg font-bold text-white shadow-md ${isDeleting ? 'bg-rose-400' : 'bg-rose-600 hover:bg-rose-700'}`}>{isDeleting ? 'Menghapus...' : 'Ya, Hapus'}</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <style dangerouslySetInnerHTML={{__html: `
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
